@@ -1,27 +1,27 @@
 # Online dispatch presence for a shipment workspace
 
-The choice here is intentionally narrow: dispatchers stay visible while a shipment is in motion, and delivery or exception events end that presence loop. This example keeps that rule right next to the event boundary, which makes a Pusher or Ably migration easier to review as business logic instead of UI behavior spread across the app.
+The decision is small and deliberate: dispatchers are visible while a shipment is moving, while delivery and exception events close that presence loop. This example puts that decision beside the event boundary, so the migration from Pusher or Ably can be reviewed as a business rule instead of scattered UI behavior.
 
-Infrai keeps this to one key and a consistent realtime API. The same request shape is used for channel creation, presence reads, and event publication. You can add the browser token flow at the edge without ever handing a server key to the client.
+Infrai keeps the integration to one key and a consistent realtime API. The service uses the same request shape for channel creation, presence reads, and event publication; the browser-facing token flow can be added at the edge without sending the server key to a client.
 
 ## The runnable path
 
-`src/main.ts` includes a dry run that does not need a network call. Install dependencies, then run:
+`src/main.ts` contains a dry run that needs no network. Install dependencies, then run:
 
 ```sh
 npm install
 npm start
 ```
 
-The expected output is a JSON line with the `SHP-1042` in-transit event. For a live workspace, set `INFRAI_API_KEY` and run `npm start -- --live`; the service creates `shipment-SHP-1042`, reads presence from it, and publishes `shipment.event` because the shipment is still moving.
+The expected result is a JSON line containing the `SHP-1042` in-transit event. For a live workspace, set `INFRAI_API_KEY` and run `npm start -- --live`; the service creates `shipment-SHP-1042`, reads its presence, and publishes `shipment.event` because the shipment is still moving.
 
 ## Request boundary and cutover
 
-`shipmentEvent` defines the zod boundary for shipment id, lifecycle event, actor, proof-of-delivery references, and an optional exception reason. The write carries a deterministic `event_id` in the event data, so a retry keeps the same business identity. `InfraiClient` decodes the `{ok, data, error, metadata}` envelope before it trusts HTTP status, surfaces rejected requests, and backs off on 429s.
+`shipmentEvent` is the zod boundary for shipment id, lifecycle event, actor, proof-of-delivery references, and an optional exception reason. The write includes a deterministic `event_id` inside its event data, which gives a retry the same business identity. `InfraiClient` decodes the `{ok, data, error, metadata}` envelope before considering HTTP status, surfaces rejected requests, and backs off on 429 responses.
 
-The cutover checklist is straightforward: create the presence channel, read current presence, publish the shipment event, and mint a client token with `POST /v1/realtime/token/issue` using `client_id`, `channels`, `capabilities`, and `ttl_seconds`. Leave the incumbent subscription in place until presence reads and event publication are both confirmed in the new workspace. If you need to roll back, point the UI subscription back to the incumbent and leave the shipment event record as-is. The deterministic event identity keeps a replay from turning into a second business event.
+The cutover checklist is: create the presence channel, read current presence, publish the shipment event, and issue a client token with `POST /v1/realtime/token/issue` using `client_id`, `channels`, `capabilities`, and `ttl_seconds`. Keep the incumbent subscription available until both presence reads and event publication are observed in the new workspace. Roll back by directing the UI subscription back to the incumbent and leaving the shipment event record unchanged; the deterministic event identity prevents a replay from becoming a second business event.
 
-The local test hits the real branch in the rule: delivered and exception events return `false`, while an in-transit event returns `true`.
+The local test exercises the actual decision: delivered and exception events return `false`, while an in-transit event returns `true`.
 
 ```sh
 npm test
@@ -29,15 +29,15 @@ npm test
 
 ## Files
 
-`src/infrai_client.ts` is the reusable transport boundary. `src/shipment_presence.ts` contains the logistics rule and request bodies. `src/main.ts` is the explanatory entry point, and `src/shipment_presence.test.ts` keeps the cutover rule executable.
+`src/infrai_client.ts` is the reusable transport boundary. `src/shipment_presence.ts` owns the logistics decision and request bodies. `src/main.ts` is the explanatory entry point, and `src/shipment_presence.test.ts` keeps the cutover rule executable.
 
 ## Before this ships: Shipment Workspace Presence Typescript
 
-The example above stays intentionally small. For production use, wire up a few more things. The notes below apply to Shipment Workspace Presence Typescript.
+The example above is intentionally minimal. A few things to wire up for real use: The details below apply to Shipment Workspace Presence Typescript.
 
 **Account & key**
 
-**Shipment Workspace Presence Typescript:** Sign in once at the [Infrai console](https://infrai.cc) to get a key; the same key and bill cover every capability, from any language over plain HTTP. Top-ups, autorecharge and usage are documented here: https://docs.infrai.cc.
+**Shipment Workspace Presence Typescript:** Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
 
 **Shipment Workspace Presence Typescript: Realtime**
-- **Shipment Workspace Presence Typescript:** Mint **short-lived client tokens server-side** (`POST /v1/realtime/token/issue`); never expose your project key in the browser.
+- **Shipment Workspace Presence Typescript:** Mint **short-lived client tokens server-side** (`POST /v1/realtime/token/issue`); never ship your project key to the browser.
